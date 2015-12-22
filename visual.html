@@ -41,14 +41,14 @@ td {
 #dependencies {
 	width: 100%;
 	max-height: 60vh;
-	max-width: 300px;
+	max-width: 257px;
 	overflow-y: scroll;
 	overflow-x: hidden;
 }
 
 #dependents {
-	width: 100%;
-	bottom: 0;
+	color: red;
+	font-size: 14px;
 }
 
 .d3-container {
@@ -73,7 +73,9 @@ td {
 				</td>
 			</tr>
 			<tr>
-				<td id="dependents" colspan="3"></td>
+				<td colspan="3">
+					<div id="dependents"></div>  
+				</td>
 			</tr>
 		</table>
 	</div>
@@ -333,10 +335,8 @@ td {
 				return connected ? 1 : 0.1;
 			});
 
-			$("#dependents").append($("<li>")
-				.css("color", "red")
-				.text("Number of times " + d.name + " is depended on: " + numberDependentOn(d))
-				);
+			$("#dependents")
+				.text("Number of times " + d.name + " is depended on: " + numberDependentOn(d));
 
 			labels.style("visibility", function(o) {
 				return zoomFunction(d, o) ? "visible" : "collapse";
