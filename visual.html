@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+
+body {
+	font-family: arial;
+}
+
+.node {
+  	stroke: #fff;
+  	stroke-width: 1.5px;
+}
+
+.link {
+  	fill: none;
+  	stroke: #bbb;
+  	stroke-width: .5px;
+}
+
+#container {
+	display: flex;
+}
+
+td {
+	display: list-item;
+}
+
+#menu {
+	width: 300px;
+	height: 100vh;
+	display: flex;
+	border-right: solid black 2px;
+	overflow: scroll;
+}
+
+#control-panel {
+	width: 100%;
+	height: 20vh;
+	font-size: 12px;
+}
+
+#dependencies {
+	width: 100%;
+}
+
+#dependents {
+	width: 100%;
+	bottom: 0;
+}
+
+.d3-container {
+	flex-grow: 1;
+}
+
+</style>
+<body>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.3/jquery.min.js"></script>
+	<div id="container">
+		<table id="menu">
+			<tr id="control-panel">
+				<td><input type="radio" name="zoom" value="All" checked> All </input></td>
+				<td><input type="radio" name="zoom" value="Dependencies"> Dependencies </input></td>
+				<td><input type="radio" name="zoom" value="Dependents"> Is Depended On </input></td>
+				<td><input id="connections" type="checkbox" name="node-radius" value="connections"> Size Nodes By Connections </input></td>
+			</tr>
+			<tr>
+				<td id="dependencies" colspan="3"></td>
+			</tr>
+			<tr>
+				<td id="dependents" colspan="3"></td>
+			</tr>
+		</table>
+	</div>
+<script src="d3.min.js" charset="utf-8"></script>
+<script>
+	var width = $("#container").width() - 300,
+		height = $("#container").height();
+
+	var color = d3.scale.category20();
+
+	var force = d3.layout.force()
+		.linkStrength(.1)
+		.size([width, height]);
+
+	var svg = d3.select(document.getElementById("container")).append("svg")
+		.classed("d3-container", true)
+		.attr("width", width)
+		.attr("height", height);
+
+	var g = svg.append("g");
+
+	var zoomIn = d3.behavior.zoom().scaleExtent([1, 8]).scale(2);
+	var zoomOut = d3.behavior.zoom().scaleExtent([1, 8]).scale(1);
+
+	d3.json("business.json", function(error, graph) {
+
+		if (error) throw error;
+
+		function linkGroupByCategory(isProprietary) {
+			return isProprietary ? 2 : 1;
+		}
+
+		var NODE_NAME_TO_NUMBER = {};
+
+		var nodes = [];
+		var links = [];
+
+		var focus_node = null;
+
+		Object.keys(graph).forEach(function(key, index) {
+			nodes.push({
+				name: key,
+				group: graph[key].proprietary,
+			});
+
+			NODE_NAME_TO_NUMBER[key] = index;
+		});
+
+		Object.keys(graph).forEach(function(key, index) {
+			if (!graph[key].proprietary) {
+				return;
+			}
+			graph[key].dependencies.forEach(function(dependency) {
+				links.push({
+					source: index,
+					target: NODE_NAME_TO_NUMBER[dependency],
+					type: 0,
+					value: linkGroupByCategory(graph[dependency].proprietary)
+				});
+			});
+
+			graph[key].devDependencies.forEach(function(dependency) {
+				if (!(NODE_NAME_TO_NUMBER[dependency])) {
+					console.log(dependency);
+				}
+
+				links.push({
+					source: index,
+					target: NODE_NAME_TO_NUMBER[dependency],
+					type: 1,
+					value: linkGroupByCategory(graph[dependency].proprietary)
+				});
+			});
+		});
+
+		graph.nodes = nodes;
+		graph.links = links;
+
+		var linkedByIndex = {};
+		var NUMBER_OF_DEPENDENCIES = {};
+		var NUMBER_DEPENDED_ON = {};
+		graph.links.forEach(function(d) {
+			linkedByIndex[d.source + "," + d.target] = true;
+
+			NUMBER_DEPENDED_ON[d.target] = (NUMBER_DEPENDED_ON[d.target] || 0) + 1;
+			NUMBER_OF_DEPENDENCIES[d.source] = (NUMBER_OF_DEPENDENCIES[d.source] || 0) + 1;
+		});
+		console.log(linkedByIndex);
+
+		function isConnected(a, b) {
+			return linkedByIndex[a.index + "," + b.index] || linkedByIndex[b.index + "," + a.index] || a.index == b.index;
+		}
+
+		function isDependedOn(a, b) {
+			return linkedByIndex[b.index + "," + a.index];
+		}
+
+		function dependsOn(a, b) {
+			return linkedByIndex[a.index + "," + b.index];
+		}
+
+		function areTheSameNode(a, b) {
+			return a.index === b.index;
+		}
+
+		function numberOfDependencies(a) {
+			return NUMBER_OF_DEPENDENCIES[a.index] || 0;
+		}
+
+		function numberDependentOn(a) {
+			return NUMBER_DEPENDED_ON[a.index] || 0;
+		}
+
+		function zoomDependencies(a, b) {
+			return dependsOn(a,b) || areTheSameNode(a,b);
+		}
+
+		function zoomDependsOn(a, b) {
+			return isDependedOn(a,b) || areTheSameNode(a,b);
+		}
+
+		var zoom_type = "All";
+		$("input:radio[name=zoom]").click(function() {
+		    zoom_type = $(this).val();
+		});
+		var ZOOM_FUNCTION = {
+			"All" : isConnected,
+			"Dependencies": zoomDependencies,
+			"Dependents": zoomDependsOn
+		};
+
+		var radiusCheck = false;
+		$("input:checkbox[name=node-radius]").click(function() {
+		    radiusCheck = $("#connections").checked;
+		});
+
+		function zoomFunction(a, b) {
+			return ZOOM_FUNCTION[zoom_type](a, b);
+		}
+
+		var radius_size = 8;
+
+		force
+			.nodes(nodes)
+			.links(links)
+			.charge(function(d) {
+				return -100;
+			})
+			.start();
+
+
+		var link = g.selectAll(".link")
+			.data(graph.links)
+			.enter().append("line")
+			.attr("class", "link")
+			.style("stroke-width", function(d) {
+				return 1;
+			})
+			.style("stroke", function(d) {
+				if (d.type === 0) {
+					return "#111";
+				} else {
+					return "#bbb";
+				}
+			});
+
+		var gnodes = g.selectAll("g.gnode")
+			.data(graph.nodes)
+			.enter()
+			.append("g")
+			.classed("g.node", true)
+			.call(force.drag);
+
+		var node = gnodes.append("circle")
+			.attr("class", "node")
+			.attr("r", function(d) {
+				if (radiusCheck) {
+					return d.weight;
+				}
+				return 8;
+			})
+			.style("fill", function(d) {
+				return color(d.group);
+			})
+			.on("mouseover", mouseover)
+			.on("mouseout", mouseout);
+
+		gnodes.on("mousedown", set_focus);
+		gnodes.on("mouseup", release_focus);
+
+		var labels = gnodes.append("text")
+			.attr("x", 12)
+			.attr("dy", 0)
+			.attr("fill", "black")
+			.attr("background-color", "white")
+			.attr("visibility", "collapse")
+			.text(function(d) {
+				return d.name;
+			});
+
+		force.on("tick", function() {
+			link.attr("x1", function(d) {
+					return d.source.x;
+				})
+				.attr("y1", function(d) {
+					return d.source.y;
+				})
+				.attr("x2", function(d) {
+					return d.target.x;
+				})
+				.attr("y2", function(d) {
+					return d.target.y;
+				});
+
+			gnodes.attr("transform", function(d) {
+				return 'translate(' + [d.x, d.y] + ')';
+			});
+		});
+
+		function mouseover(d) {
+			if (!focus_node) {
+				labels.style("visibility", function(o) {
+					return o === d ? "visible" : "collapsed";
+				});
+			}
+		}
+
+		function mouseout(d) {
+			if (!focus_node) {
+				labels.style("visibility", "collapse");
+			}
+		}
+
+		function set_focus(d) {
+			d3.event.stopPropagation();
+			focus_node = d;
+
+			node.style("opacity", function(o) {
+				var connected = zoomFunction(d, o);
+				if (dependsOn(d, o)) {
+					$("#dependencies").append($("<li>")
+						.text(o.name + ": " + numberOfDependencies(o) + " dependencies")
+						);
+				}
+				return connected ? 1 : 0.1;
+			});
+
+			$("#dependents").append($("<li>")
+				.css("color", "red")
+				.text("Number of times " + d.name + " is depended on: " + numberDependentOn(d))
+				);
+
+			labels.style("visibility", function(o) {
+				return zoomFunction(d, o) ? "visible" : "collapse";
+			});
+
+			link.style("opacity", function(o) {
+				return o.source.index == d.index || o.target.index == d.index ? 1 : 0.1;
+			});
+
+			var dcx = ($(".d3-container").width() / 2 - d.x * zoomIn.scale());
+			var dcy = ($(".d3-container").height() / 2 - d.y * zoomIn.scale());
+			zoomIn.translate([dcx, dcy]);
+			g.attr("transform", "translate(" + dcx + "," + dcy + ")scale(" + zoomIn.scale() + ")");
+
+		}
+
+		function release_focus(d) {
+			focus_node = null;
+			node.style("opacity", 1);
+			link.style("opacity", 1);
+			labels.style("visibility", "collapse");
+			g.attr("transform", "translate(0, 0)scale(1)");
+			$("#dependencies").empty();
+			$("#dependents").empty();
+		}
+
+	});
+</script>
