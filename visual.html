@@ -30,7 +30,6 @@ td {
 	height: 100vh;
 	display: flex;
 	border-right: solid black 2px;
-	overflow: scroll;
 }
 
 #control-panel {
@@ -41,6 +40,10 @@ td {
 
 #dependencies {
 	width: 100%;
+	max-height: 60vh;
+	max-width: 300px;
+	overflow-y: scroll;
+	overflow-x: hidden;
 }
 
 #dependents {
@@ -64,7 +67,10 @@ td {
 				<td><input id="connections" type="checkbox" name="node-radius" value="connections"> Size Nodes By Connections </input></td>
 			</tr>
 			<tr>
-				<td id="dependencies" colspan="3"></td>
+				<td colspan="3">
+					<h2> Dependencies </h2>
+					<ul id="dependencies"></ul>
+				</td>
 			</tr>
 			<tr>
 				<td id="dependents" colspan="3"></td>
@@ -100,7 +106,7 @@ td {
 		g.attr("transform", "translate(" + d3.event.translate + ")scale(" + d3.event.scale + ")");
 	}
 
-	svg.call(zoom)
+	svg
 		.call(zoom.event);
 
 	d3.json("business.json", function(error, graph) {
@@ -166,7 +172,6 @@ td {
 			NUMBER_DEPENDED_ON[d.target] = (NUMBER_DEPENDED_ON[d.target] || 0) + 1;
 			NUMBER_OF_DEPENDENCIES[d.source] = (NUMBER_OF_DEPENDENCIES[d.source] || 0) + 1;
 		});
-		console.log(linkedByIndex);
 
 		function isConnected(a, b) {
 			return linkedByIndex[a.index + "," + b.index] || linkedByIndex[b.index + "," + a.index] || a.index == b.index;
@@ -209,15 +214,14 @@ td {
 			"Dependencies": zoomDependencies,
 			"Dependents": zoomDependsOn
 		};
+		function zoomFunction(a, b) {
+			return ZOOM_FUNCTION[zoom_type](a, b);
+		}
 
 		var radiusCheck = false;
 		$("input:checkbox[name=node-radius]").click(function() {
 		    radiusCheck = $("#connections").checked;
 		});
-
-		function zoomFunction(a, b) {
-			return ZOOM_FUNCTION[zoom_type](a, b);
-		}
 
 		var radius_size = 8;
 
@@ -266,8 +270,7 @@ td {
 			.on("mouseover", mouseover)
 			.on("mouseout", mouseout);
 
-		gnodes.on("mousedown", set_focus);
-		gnodes.on("mouseup", release_focus);
+		gnodes.on("click", set_focus);
 
 		var labels = gnodes.append("text")
 			.attr("x", 12)
@@ -313,7 +316,7 @@ td {
 		}
 
 		function set_focus(d) {
-			d3.event.stopPropagation();
+			if (d3.event.defaultPrevented) return;
 			if (focus_node === d) {
 				return release_focus();
 			}
@@ -351,7 +354,12 @@ td {
 				.call(zoom.translate(translate).scale(2).event);
 		}
 
+		$(".d3-container").on("click", release_focus);
+
 		function release_focus(d) {
+			if (!d || !focus_node || d.toElement.nodeName === "circle") {
+				return;
+			}
 			focus_node = null;
 			node.style("opacity", 1);
 			link.style("opacity", 1);
