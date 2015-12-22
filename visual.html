@@ -89,8 +89,19 @@ td {
 
 	var g = svg.append("g");
 
-	var zoomIn = d3.behavior.zoom().scaleExtent([1, 8]).scale(2);
-	var zoomOut = d3.behavior.zoom().scaleExtent([1, 8]).scale(1);
+	var zoom = d3.behavior.zoom()
+	    .translate([0, 0])
+	    .scale(1)
+	    .scaleExtent([1, 8])
+	    .on("zoom", zoomed);
+
+	function zoomed() {
+		g.style("stroke-width", 1.5 / d3.event.scale + "px");
+		g.attr("transform", "translate(" + d3.event.translate + ")scale(" + d3.event.scale + ")");
+	}
+
+	svg.call(zoom)
+		.call(zoom.event);
 
 	d3.json("business.json", function(error, graph) {
 
@@ -303,6 +314,9 @@ td {
 
 		function set_focus(d) {
 			d3.event.stopPropagation();
+			if (focus_node === d) {
+				return release_focus();
+			}
 			focus_node = d;
 
 			node.style("opacity", function(o) {
@@ -328,11 +342,13 @@ td {
 				return o.source.index == d.index || o.target.index == d.index ? 1 : 0.1;
 			});
 
-			var dcx = ($(".d3-container").width() / 2 - d.x * zoomIn.scale());
-			var dcy = ($(".d3-container").height() / 2 - d.y * zoomIn.scale());
-			zoomIn.translate([dcx, dcy]);
-			g.attr("transform", "translate(" + dcx + "," + dcy + ")scale(" + zoomIn.scale() + ")");
+			var dcx = ($(".d3-container").width() / 2 - d.x * 2);
+			var dcy = ($(".d3-container").height() / 2 - d.y * 2);
+			var translate = [dcx, dcy];
 
+			svg.transition()
+				.duration(750)
+				.call(zoom.translate(translate).scale(2).event);
 		}
 
 		function release_focus(d) {
@@ -340,7 +356,9 @@ td {
 			node.style("opacity", 1);
 			link.style("opacity", 1);
 			labels.style("visibility", "collapse");
-			g.attr("transform", "translate(0, 0)scale(1)");
+			svg.transition()
+				.duration(750)
+				.call(zoom.translate([0, 0]).scale(1).event);
 			$("#dependencies").empty();
 			$("#dependents").empty();
 		}
